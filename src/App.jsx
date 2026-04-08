@@ -162,7 +162,7 @@ const App = () => {
             <form onSubmit={handleLogin} className="space-y-4">
                 <input type="email" placeholder="Email" className="w-full bg-stone-50 rounded-2xl p-4.5 outline-none text-sm" onChange={e => setLoginForm({...loginForm, email: e.target.value})} required />
                 <input type="password" placeholder="Password" className="w-full bg-stone-50 rounded-2xl p-4.5 outline-none text-sm" onChange={e => setLoginForm({...loginForm, password: e.target.value})} required />
-                <button disabled={isAuthenticating} className="w-full bg-stone-900 text-white py-5 rounded-2xl font-black text-[10px] tracking-widest uppercase">
+                <button disabled={isAuthenticating} className="w-full bg-stone-900 text-white py-5 rounded-2xl font-black text-[10px] tracking-widest">
                   {isAuthenticating ? 'Authenticating...' : 'Enter System'}
                 </button>
             </form>
@@ -178,8 +178,8 @@ const App = () => {
           <div className={`w-12 h-12 ${config.logoColor} rounded-2xl flex items-center justify-center text-white mb-4 shadow-lg`}>
             <Database size={24}/>
           </div>
-          <h1 className="font-black text-xl tracking-tighter italic uppercase leading-none">{config.name}</h1>
-          <p className="text-[9px] font-bold text-stone-300 uppercase tracking-widest mt-1">{config.tagline}</p>
+          <h1 className="font-black text-xl tracking-tighter italic leading-none">{config.name}</h1>
+          <p className="text-[9px] font-bold text-stone-300 tracking-widest mt-1">{config.tagline}</p>
         </div>
         
         <nav className="space-y-2 flex-1">

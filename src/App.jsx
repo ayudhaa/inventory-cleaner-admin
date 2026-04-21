@@ -16,7 +16,7 @@ const App = () => {
   const [isSavingCat, setIsSavingCat] = useState(false); 
   const [activeTab, setActiveTab] = useState('inventory');
   const [searchTerm, setSearchTerm] = useState('');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // State untuk mobile menu
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -42,21 +42,32 @@ const App = () => {
 
   useEffect(() => {
     if (user) {
-      onSnapshot(query(collection(db, "products"), orderBy("createdAt", "desc")), (snap) => {
+      // Sinkronisasi Produk
+      const unsubProducts = onSnapshot(query(collection(db, "products"), orderBy("createdAt", "desc")), (snap) => {
         setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
       
-      onSnapshot(query(collection(db, "categories"), orderBy("name", "asc")), (snap) => {
+      // Sinkronisasi Kategori (Frontend akan selalu update otomatis)
+      const unsubCategories = onSnapshot(query(collection(db, "categories"), orderBy("name", "asc")), (snap) => {
         setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
       
-      onSnapshot(doc(db, "settings", "profile"), (snap) => {
+      // Sinkronisasi Settings
+      const unsubSettings = onSnapshot(doc(db, "settings", "profile"), (snap) => {
         if (snap.exists()) setConfig(prev => ({ ...prev, ...snap.data() }));
       });
 
-      onSnapshot(query(collection(db, "transactions"), orderBy("timestamp", "desc")), (snap) => {
+      // Sinkronisasi Transaksi
+      const unsubTransactions = onSnapshot(query(collection(db, "transactions"), orderBy("timestamp", "desc")), (snap) => {
         setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
+
+      return () => {
+        unsubProducts();
+        unsubCategories();
+        unsubSettings();
+        unsubTransactions();
+      };
     }
   }, [user]);
 
@@ -89,23 +100,28 @@ const App = () => {
       } else {
         await addDoc(collection(db, "products"), { ...data, createdAt: serverTimestamp() });
       }
-      Notify.success('Saved to Database'); 
+      Notify.success('Product Synced'); 
       setShowModal(false);
     } catch (err) { Notify.failure('Failed to Sync'); } finally { setIsSaving(false); }
   };
 
   const handleSaveCategory = async (e) => {
     e.preventDefault();
-    if (!newCat || isSavingCat) return;
+    if (!newCat.trim() || isSavingCat) return;
     
     setIsSavingCat(true);
     try {
       if (editingCatId) {
+        // UPDATE Kategori
         await updateDoc(doc(db, "categories", editingCatId), { name: newCat });
         Notify.success('Category Updated');
         setEditingCatId(null);
       } else {
-        await addDoc(collection(db, "categories"), { name: newCat });
+        // ADD Kategori Baru
+        await addDoc(collection(db, "categories"), { 
+            name: newCat,
+            createdAt: serverTimestamp() 
+        });
         Notify.success('Category Added');
       }
       setNewCat('');
@@ -114,6 +130,23 @@ const App = () => {
     } finally {
       setIsSavingCat(false);
     }
+  };
+
+  const handleDeleteCategory = (id, name) => {
+    Confirm.show(
+      'Hapus Kategori?',
+      `Menghapus "${name}" tidak akan menghapus produk di kategori ini, tapi alokasi kategori produk akan menjadi kosong.`,
+      'Ya, Hapus',
+      'Batal',
+      async () => {
+        try {
+          await deleteDoc(doc(db, "categories", id));
+          Notify.success('Category Deleted');
+        } catch (err) {
+          Notify.failure('Delete Failed');
+        }
+      }
+    );
   };
 
   const handleUpdateConfig = async (e) => {
@@ -224,7 +257,7 @@ const App = () => {
                 {filteredProducts.map(p => (
                   <div key={p.id} className="bg-white p-6 md:p-8 rounded-[2.5rem] md:rounded-[3rem] border border-stone-50 shadow-sm group hover:shadow-xl transition-all relative overflow-hidden">
                     <div className="flex justify-between items-start relative z-10 mb-8">
-                        <span className="text-[8px] font-black bg-stone-50 text-stone-400 px-4 py-2 rounded-xl tracking-widest">{p.category}</span>
+                        <span className="text-[8px] font-black bg-stone-50 text-stone-400 px-4 py-2 rounded-xl tracking-widest uppercase">{p.category || 'No Category'}</span>
                         <div className="flex gap-1">
                             <button onClick={() => { setNewProd(p); setShowModal(true); }} className="p-2 text-stone-200 hover:text-stone-900 transition-colors"><Edit3 size={15}/></button>
                             <button onClick={() => Confirm.show('Hapus Produk?', `Menghapus "${p.name}" bersifat permanen.`, 'Ya, Hapus', 'Batal', () => deleteDoc(doc(db, "products", p.id)))} className="p-2 text-stone-100 hover:text-red-500 transition-colors"><Trash2 size={15}/></button>
@@ -344,7 +377,8 @@ const App = () => {
                       />
                       <div className="flex gap-2">
                           <button 
-                            disabled={isSavingCat || !newCat}
+                            type="submit"
+                            disabled={isSavingCat || !newCat.trim()}
                             className={`flex-1 sm:flex-none p-4 rounded-2xl transition-all disabled:opacity-50 ${editingCatId ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-stone-100 text-stone-900 hover:bg-stone-900 hover:text-white'}`}>
                             {isSavingCat ? <Loader2 size={20} className="animate-spin mx-auto" /> : editingCatId ? <Check size={20} className="mx-auto"/> : <Plus size={20} className="mx-auto"/>}
                           </button>
@@ -357,7 +391,7 @@ const App = () => {
                     <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 scrollbar-hide">
                       {categories.map(c => (
                         <div key={c.id} className={`flex justify-between items-center p-5 rounded-2xl border transition-all group ${editingCatId === c.id ? 'bg-amber-50 border-amber-200' : 'bg-stone-50/50 border-stone-50 hover:bg-white hover:shadow-md'}`}>
-                          <span className={`text-[10px] font-black tracking-widest ${editingCatId === c.id ? 'text-amber-700' : 'text-stone-600'}`}>{c.name}</span>
+                          <span className={`text-[10px] font-black tracking-widest uppercase ${editingCatId === c.id ? 'text-amber-700' : 'text-stone-600'}`}>{c.name}</span>
                           <div className="flex gap-2">
                             <button 
                               disabled={isSavingCat}
@@ -367,13 +401,14 @@ const App = () => {
                             </button>
                             <button 
                               disabled={isSavingCat}
-                              onClick={() => Confirm.show('Hapus Kategori?', `Yakin ingin menghapus "${c.name}"?`, 'Ya', 'Batal', () => deleteDoc(doc(db, "categories", c.id)))} 
+                              onClick={() => handleDeleteCategory(c.id, c.name)} 
                               className="text-stone-200 hover:text-red-500 md:opacity-0 group-hover:opacity-100 transition-all disabled:hidden">
                               <X size={14}/>
                             </button>
                           </div>
                         </div>
                       ))}
+                      {categories.length === 0 && <p className="text-center text-stone-300 text-[10px] py-10 font-bold tracking-widest uppercase">No Categories Defined</p>}
                     </div>
                   </div>
                </div>
@@ -401,12 +436,15 @@ const App = () => {
               
               <div className="space-y-2">
                   <label className="text-[9px] font-black text-stone-400 ml-4 tracking-widest">Category Allocation</label>
-                  <select disabled={isSaving} className="w-full bg-stone-50 rounded-2xl p-4 md:p-5 outline-none text-xs font-bold appearance-none cursor-pointer border border-transparent focus:border-stone-100 disabled:opacity-50" value={newProd.category} onChange={e => setNewProd({...newProd, category: e.target.value})} required>
-                    <option value="">-- Choose Category --</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.name}>{c.name.toUpperCase()}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select disabled={isSaving} className="w-full bg-stone-50 rounded-2xl p-4 md:p-5 outline-none text-xs font-bold appearance-none cursor-pointer border border-transparent focus:border-stone-100 disabled:opacity-50 uppercase" value={newProd.category} onChange={e => setNewProd({...newProd, category: e.target.value})} required>
+                        <option value="">-- Choose Category --</option>
+                        {categories.map((c) => (
+                        <option key={c.id} value={c.name}>{c.name.toUpperCase()}</option>
+                        ))}
+                    </select>
+                    <ChevronRight size={14} className="absolute right-5 top-1/2 -translate-y-1/2 rotate-90 text-stone-300 pointer-events-none"/>
+                  </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
@@ -415,7 +453,7 @@ const App = () => {
                     <input type="number" disabled={isSaving} className="w-full bg-stone-50 rounded-2xl p-4 md:p-5 outline-none text-sm font-bold border border-transparent focus:border-stone-100 disabled:opacity-50" placeholder="0" value={newProd.price} onChange={e => setNewProd({...newProd, price: e.target.value})} required />
                 </div>
                 <div className="space-y-2">
-                    <label className="text-[9px] font-black text-stone-400 ml-4 tracking-widest">Opening Stock</label>
+                    <label className="text-[9px] font-black text-stone-400 ml-4 tracking-widest">Current Stock</label>
                     <input type="number" disabled={isSaving} className="w-full bg-stone-50 rounded-2xl p-4 md:p-5 outline-none text-sm font-bold border border-transparent focus:border-stone-100 disabled:opacity-50" placeholder="0" value={newProd.stock} onChange={e => setNewProd({...newProd, stock: e.target.value})} required />
                 </div>
               </div>
